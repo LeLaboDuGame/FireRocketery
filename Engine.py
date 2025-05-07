@@ -127,13 +127,14 @@ class FireRocketry:
 
         # Calcule de la vitesse d'éjection des gaz (ve):
         Ve = math.sqrt(
-            (2 * Constant.gamma / (Constant.gamma - 1)) * (Constant.perfect_gaz_cst / Constant.air_molar_mass) * self.rocket.fuel.gaz_heat * (
+            (2 * Constant.gamma / (Constant.gamma - 1)) * (
+                    Constant.perfect_gaz_cst / Constant.air_molar_mass) * self.rocket.fuel.gaz_heat * (
                     1 - Pe_Pc ** ((Constant.gamma - 1) / Constant.gamma)))  # m/s
 
         # Cherchons Pe(t) trouvons d'abord Pc(t)=(n(t)*R*Tc)/Vc(t)
         # Cherchons Vc(t) (Volume) et n(t)
         Vc_t = self.rocket.fuel.chamber_volume - (self.rocket.fuel.volume - (
-                self.rocket.fuel.linear_combustion_speed * t * self.rocket.fuel.exposed_surface_combustion)) # m^3
+                self.rocket.fuel.linear_combustion_speed * t * self.rocket.fuel.exposed_surface_combustion))  # m^3
 
         tau = Vc_t / (self.rocket.At * Ve)
         n_t = (self.dot_m / self.rocket.fuel.gaz_molar_mass) * tau  # mol
@@ -146,7 +147,7 @@ class FireRocketry:
 
         mass_t = self.rocket.fuel.mass - self.dot_m * t
         if mass_t <= 0:
-            F_t=0
+            F_t = 0
         return F_t, mass_t
 
     def calculate_drag(self, v):
@@ -161,25 +162,26 @@ class FireRocketry:
         y = [yi]  # altitude
         v = [vi]  # vitesse
         a = [0]  # acceleration
-        t = 0
+        dt = 0
         t_lst = [0]
         Fthr = [0]
         # init plot
         figure, axis = plt.subplots(2, 2)
 
         have_warn_no_fuel_left = False
-        warnings.warn(
+        print(
             "Cette simulation repose sur des approximations peu réel ! On suppose que les gaz sont parfaits, que la fusée se dirige uniquement verticalement, que le nez est un cône, etc.")
         print("Starting simulating... Please wait !")
-        while y[-1] >= 0:
-            print(y[-1])
-            Fthr_t, mass_fuel = self.calculate_rocket_thrust(self.calc_Patm(y[-1]), t)
-            Fdrag_t = self.calculate_drag(v[-1])
+
+        i = 0
+        while y[i] >= 0:
+            Fthr_t, mass_fuel = self.calculate_rocket_thrust(self.calc_Patm(y[i]), dt)
+            Fdrag_t = self.calculate_drag(v[i])
             mass = self.rocket.mass - self.rocket.fuel.mass + mass_fuel
             P = mass * Constant.gravity
 
             if mass_fuel <= 0 and not have_warn_no_fuel_left:
-                print(f"NO FUEL LEFT AT {t * FireRocketry.PRECISION}SEC !")
+                print(f"NO FUEL LEFT AT {dt}SEC !")
                 have_warn_no_fuel_left = True
 
             # Calculons Ftotal(t)
@@ -189,23 +191,25 @@ class FireRocketry:
             ay = Ftotal_t / mass
 
             # Comme d_v/d_t=a alors calculons primitive de a
-            vy = ay * t + vi
+            vy = v[i] + ay * dt
 
             # Comme d_y/d_t=v alors calculons primitive de v
-            Oy = (1 / 2) * vy * t + yi
+            Oy = y[i] + v[i] * dt + 0.5 * ay * dt ** 2
+
+            if v[i] >= 343:
+                warnings.warn(
+                    "The rocket exceed Mach 1 causing model to predict bad result ! Fix the simulator or change settings !")
+
+            t_lst.append(dt)
+            dt += self.frame_in_sec
+            i += 1
 
             y.append(Oy)
             v.append(vy)
             a.append(ay)
             Fthr.append(Fthr_t)
 
-            if v[-1] >= 343:
-                warnings.warn(
-                    "The rocket exceed Mach 1 causing model to predict bad result ! Fix the simulator or change settings !")
-
-            t_lst.append(t)
-            t += self.frame_in_sec
-        print(f"Simulation finished at t={t * FireRocketry.PRECISION}sec !")
+        print(f"Simulation finished at t={dt}sec i={i} !")
         print(mass_fuel, mass)
         # Show plot !
         # Acceleration
@@ -228,8 +232,7 @@ class FireRocketry:
         plt.show()
 
 
-
 fr = FireRocketry(precision=100)
-#print(fr.calculate_rocket_thrust(fr.calc_Patm(0), 1))
-#print(fr.calculate_drag(1))
+# print(fr.calculate_rocket_thrust(fr.calc_Patm(0), 1))
+# print(fr.calculate_drag(1))
 fr.simulation()
