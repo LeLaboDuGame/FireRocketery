@@ -68,8 +68,8 @@ class Rocket:
         self.smallest_nozzle_diameter = rocket_params["smallest-nozzle-diameter"]  # At
         self.opening_nozzle_diameter = rocket_params["opening-nozzle-diameter"]  # Ae
 
-        self.Ae = Constant.pi * (self.opening_nozzle_diameter * 1e-2 / 2) ** 2
-        self.At = Constant.pi * (self.smallest_nozzle_diameter * 1e-2 / 2) ** 2
+        self.Ae = Constant.pi * (self.opening_nozzle_diameter / 2) ** 2
+        self.At = Constant.pi * (self.smallest_nozzle_diameter / 2) ** 2
         Ae_At = self.Ae / self.At
 
         def mach_equation(Me):
@@ -97,6 +97,8 @@ class FireRocketry:
         self.rocket_name = rocket_name
         self.init_constants()
         self.rocket = self.load_rocket(self.rocket_name)
+        # Calcule du débit de masse (dot_m):
+        self.dot_m = self.rocket.fuel.density * self.rocket.fuel.exposed_surface_combustion * self.rocket.fuel.linear_combustion_speed  # debit de masse kg/s
 
     def init_constants(self):
         with open(self.params_file, 'r') as file:
@@ -120,38 +122,40 @@ class FireRocketry:
             print("Start calculating rocket thrust...")
         # Calcul de force de poussée : F(t) = dot_m * ve + (Pe(t) - Patm(h)) * Ae
 
-        # Calcule du débit de masse (dot_m):
-        dot_m = self.rocket.fuel.density * self.rocket.fuel.exposed_surface_combustion * self.rocket.fuel.linear_combustion_speed  # debit de masse kg/s
-
         # Calcule de Pe/Pc
         Pe_Pc = (1 + ((Constant.gamma - 1) / 2) * self.rocket.Me ** 2) ** (-Constant.gamma / (Constant.gamma - 1))
 
         # Calcule de la vitesse d'éjection des gaz (ve):
         Ve = math.sqrt(
-            (2 * Constant.gamma / (Constant.gamma - 1)) * Constant.perfect_gaz_cst * self.rocket.fuel.gaz_heat * (
+            (2 * Constant.gamma / (Constant.gamma - 1)) * (Constant.perfect_gaz_cst / Constant.air_molar_mass) * self.rocket.fuel.gaz_heat * (
                     1 - Pe_Pc ** ((Constant.gamma - 1) / Constant.gamma)))  # m/s
 
         # Cherchons Pe(t) trouvons d'abord Pc(t)=(n(t)*R*Tc)/Vc(t)
-        # Cherchons Vc(t) et n(t)
+        # Cherchons Vc(t) (Volume) et n(t)
         Vc_t = self.rocket.fuel.chamber_volume - (self.rocket.fuel.volume - (
-                self.rocket.fuel.linear_combustion_speed * t * self.rocket.fuel.exposed_surface_combustion))
+                self.rocket.fuel.linear_combustion_speed * t * self.rocket.fuel.exposed_surface_combustion)) # m^3
 
         tau = Vc_t / (self.rocket.At * Ve)
-        n_t = (dot_m / self.rocket.fuel.gaz_molar_mass) * tau  # mol
+        n_t = (self.dot_m / self.rocket.fuel.gaz_molar_mass) * tau  # mol
         Pc_t = (n_t * Constant.perfect_gaz_cst * self.rocket.fuel.gaz_heat) / Vc_t  # Pa
 
         Pe_t = Pe_Pc * Pc_t  # Pa
 
         # Calcule de F(t)
-        F_t = dot_m * Ve + (Pe_t - Patm) * self.rocket.Ae
+        F_t = self.dot_m * Ve + (Pe_t - Patm) * self.rocket.Ae
 
-        mass_t = self.rocket.fuel.mass - self.rocket.fuel.density * self.rocket.fuel.exposed_surface_combustion * self.rocket.fuel.linear_combustion_speed * t
-
+        mass_t = self.rocket.fuel.mass - self.dot_m * t
+        if mass_t <= 0:
+            F_t=0
         return F_t, mass_t
 
     def calculate_drag(self, v):
-        return (1 / 2) * Constant.drag_coefficient * Constant.air_density * v * (
-                Constant.pi * (self.rocket.diameter_nose / 2) ** 2)
+        return (1 / 2) * Constant.drag_coefficient * Constant.air_density * v ** 2 * (
+                Constant.pi * (self.rocket.diameter_nose / 2) ** 3)
+
+    def get_remaining_fuel_mass(self, t):
+        m0 = self.fuel.mass
+        return max(0, m0 - self.dot_m * t)
 
     def simulation(self, yi=0, vi=0):
         y = [yi]  # altitude
@@ -168,12 +172,13 @@ class FireRocketry:
             "Cette simulation repose sur des approximations peu réel ! On suppose que les gaz sont parfaits, que la fusée se dirige uniquement verticalement, que le nez est un cône, etc.")
         print("Starting simulating... Please wait !")
         while y[-1] >= 0:
+            print(y[-1])
             Fthr_t, mass_fuel = self.calculate_rocket_thrust(self.calc_Patm(y[-1]), t)
             Fdrag_t = self.calculate_drag(v[-1])
             mass = self.rocket.mass - self.rocket.fuel.mass + mass_fuel
             P = mass * Constant.gravity
 
-            if mass_fuel < 0 and not have_warn_no_fuel_left:
+            if mass_fuel <= 0 and not have_warn_no_fuel_left:
                 print(f"NO FUEL LEFT AT {t * FireRocketry.PRECISION}SEC !")
                 have_warn_no_fuel_left = True
 
@@ -201,7 +206,7 @@ class FireRocketry:
             t_lst.append(t)
             t += self.frame_in_sec
         print(f"Simulation finished at t={t * FireRocketry.PRECISION}sec !")
-
+        print(mass_fuel, mass)
         # Show plot !
         # Acceleration
         t_lst = np.array(t_lst) * FireRocketry.PRECISION

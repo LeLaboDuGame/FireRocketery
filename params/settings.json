@@ -4,21 +4,21 @@
       "mass": 856e-3,
       "length": 30e-1,
       "diameter-nose": 5e-1,
-      "smallest-nozzle-diameter": 0.5,
-      "opening-nozzle-diameter": 0.5,
+      "smallest-nozzle-diameter": 0.5e-2,
+      "opening-nozzle-diameter": 0.5e-2,
       "fuel": {
         "_comment": "All characteristics about fuel and chamber",
         "name": "rocket-candy",
-        "mass": 356e-3,
-        "exposed-surface-combustion": 19.634e-4,
-        "chamber-volume": 20.634e-3
+        "mass": 200e-3,
+        "exposed-surface-combustion": 1.59e-3,
+        "chamber-volume": 1.59e-4
       }
     }
   },
   "fuels": {
     "rocket-candy": {
-      "density": 1.85e3,
-      "linear-combustion-speed": 0.3e-2,
+      "density": 1850,
+      "linear-combustion-speed": 0.3e-1,
       "gaz-heat": 1073.15,
       "gaz-molar-mass": 28.05e-3
     }
